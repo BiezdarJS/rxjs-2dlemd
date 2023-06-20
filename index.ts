@@ -60,7 +60,7 @@ class Service {
     // and cache it to not triger multiple calls for the same goal_id
     return this.goalsCollection().pipe(
       map((response) => {
-        response = response.filter((v: Goal) => v.id === id);
+        response = response.filter((v: any) => v.id === id);
         return response[0];
       })
     );
@@ -72,43 +72,36 @@ class Service {
 }
 
 export class DashboardComponent {
+  allTasks: Task[] = [];
+
   service = new Service();
 
-  taskCollectionWithGoalCategory$: Observable<TaskWithGoalCategory[]> =
-    this.service.tasksCollection().pipe(
-      switchMap((tasks) => {
-        return from(tasks).pipe(
-          // LEARN RXJS
-          switchMap((task) =>
-            this.service
-              .getGoalById(task.goal_id) // this will produce for each task call to backend for goals collection  - not good
-              .pipe(map((goal) => ({ ...task, goalCategory: goal.category })))
-          )
-        );
-      }),
-      toArray()
-    );
-
-  taskCollectionWithGoalCategory2$: Observable<TaskWithGoalCategory[]> =
-    forkJoin({
-      tasks: this.service.tasksCollection(),
-      goals: this.service.goalsCollection(),
-    }).pipe(
-      map(({ tasks, goals }) => {
-        return tasks.map((task) => {
-          const goal: Goal = goals.find((goal) => goal.id === task.goal_id);
-
+  taskCollectionWithGoalCategory$ = this.service
+    .tasksCollection()
+    .pipe(
+      map((tasksArray) => {
+        return tasksArray.map(async (item: any) => {
           return {
-            ...task,
-            goalCategory: goal.category,
+            ...item,
+            goalCategory: await this.getGoalCategory(item),
           };
         });
       })
-    );
+    )
+    .subscribe(async (tasks: Promise<Task>[]) => {
+      const completedTasks = await Promise.all(tasks);
+      this.allTasks = completedTasks;
+      console.log(this.allTasks);
+    });
+
+  getGoalCategory(item: any) {
+    return new Promise((res) => {
+      this.service.getGoalById(item.goal_id).subscribe((d) => {
+        res(d.category);
+      });
+    });
+  }
 }
 
 const comp = new DashboardComponent();
-comp.taskCollectionWithGoalCategory$.subscribe(console.log); // subscribe in template directly
-
-console.log('second use without so many backend calls for goals collection');
-comp.taskCollectionWithGoalCategory2$.subscribe(console.log);
+comp.taskCollectionWithGoalCategory$; // subscribe in template directly
